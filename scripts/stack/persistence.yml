@@ -136,8 +136,8 @@ Resources:
     Type: 'AWS::RDS::DBInstance'
     DeletionPolicy: Delete # Should not be used in Production
     Properties:
-      DBInstanceIdentifier: CodeChallengeDB
-      DBName: CodeChallengeDB
+      DBInstanceIdentifier: demodb
+      DBName: demodb
       DBInstanceClass: !Ref DbInstanceSize
       AllocatedStorage: !Ref DBAllocatedStorage
       Engine: postgres
