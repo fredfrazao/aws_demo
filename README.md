@@ -14,7 +14,7 @@ The script will create a SSH Key pair in the desired region that can be configur
 Environment variables can be used to pass parameters to the script
 
 * `AWS_REGION`: Region to deploy the key pair - Default: `'eu-west-2'`
-* `SSH_KEY_NAME`: Name to use in Key creation - Default: `'code-challenge-key'`
+* `SSH_KEY_NAME`: Name to use in Key creation - Default: `'code-key'`
 
 
 #Changing key name and AWS Region
@@ -46,21 +46,6 @@ Environment variables can be used to pass parameters to the script
 
 
 
-### Task 1
-
-Get Domain Name used to deploy HostedZone
-
-Open a shell in one of the servers inside VPC1 or VPC2 and run the following command:
-
-To test in VPC 1 a simple EC2 instance or lambda inside the vpc should be enough to have access to the domain.
-
-Outside those VPCs the Domain doesn't exist, and even with the bucket direct Website URL, you should get Access Denied when trying to access it
-
-## Task 2
-
-In order to test that you have access to the SSH port on the instances in VPC2,
-on your local machine shell run the following:
-
 * To get running Instances IP Address:
 ```bash
 AWS_REGION='eu-west-2'
@@ -71,8 +56,6 @@ aws ec2 describe-instances \
     --region "${AWS_REGION}" | jq -r ".Reservations[].Instances[].PublicIpAddress"
 ```
 
-
-## Task 3
 
 The credentials for the database are created automatically by AWS and they are stored in SecretsManager,
 under the following secret name: `Secret`
