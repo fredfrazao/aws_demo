@@ -1,0 +1,70 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Deploys core network Resources
+
+
+Parameters:
+  DomainName:
+    Type: String
+
+Resources:
+  VPC1Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: vpc.yml
+      Parameters:
+        VPCName: Network1
+        BucketName: !Ref DomainName
+  VPC2Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: vpc.yml
+      Parameters:
+        VPCName: Network2
+        BucketName: !Ref DomainName
+        PrivateSubnets: true
+
+  HostedZone:
+    Type: "AWS::Route53::HostedZone"
+    Properties:
+      HostedZoneConfig:
+        Comment: 'somechallenge.com'
+      Name: !Ref DomainName
+      VPCs:
+        -
+          VPCId: !GetAtt VPC1Stack.Outputs.VPCID
+          VPCRegion: !Ref "AWS::Region"
+        -
+          VPCId: !GetAtt VPC2Stack.Outputs.VPCID
+          VPCRegion: !Ref "AWS::Region"
+
+
+Outputs:
+  VPC1StackName:
+    Value: !Select ["1", !Split ['/', !Ref VPC1Stack]]
+  VPC1ID:
+    Value: !GetAtt VPC1Stack.Outputs.VPCID
+    Export:
+      Name: !Sub "${AWS::StackName}-VPC1ID"
+  VPC2StackName:
+    Value: !Select ["1", !Split ['/', !Ref VPC2Stack]]
+  VPC2ID:
+    Value: !GetAtt VPC2Stack.Outputs.VPCID
+    Export:
+      Name: !Sub "${AWS::StackName}-VPC2ID"
+  VPC2PrivateSubnet1ID:
+    Value: !GetAtt VPC2Stack.Outputs.PrivateSubnet1ID
+    Export:
+      Name: !Sub "${AWS::StackName}-VPC2PrivateSubnet1ID"
+  VPC2PrivateSubnet2ID:
+    Value: !GetAtt VPC2Stack.Outputs.PrivateSubnet2ID
+    Export:
+      Name: !Sub "${AWS::StackName}-VPC2PrivateSubnet2ID"
+  VPC2PrivateSubnet3ID:
+    Value: !GetAtt VPC2Stack.Outputs.PrivateSubnet3ID
+    Export:
+      Name: !Sub "${AWS::StackName}-VPC2PrivateSubnet3ID"
+  HostedZoneId:
+    Value: !Ref HostedZone
+    Export:
+      Name: !Sub "${AWS::StackName}-HostedZoneId"
