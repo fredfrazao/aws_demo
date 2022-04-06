@@ -71,7 +71,7 @@ aws secretsmanager get-secret-value --region "${AWS_REGION}" --secret-id Secret 
 
 #Using psql
 amazon-linux-extras install postgresql13 -y
-PGPASSWORD=<DB_password> psql -h <RDS-ENDPOINT> -p <RDS-PORT> -U <DB_Username> CodeChallengeDB
+PGPASSWORD=<DB_password> psql -h <RDS-ENDPOINT> -p <RDS-PORT> -U <DB_Username> demodb
 ```
 ## Deleting Solution Resources
 
