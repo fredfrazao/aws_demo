@@ -1,0 +1,260 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Deploys EC2 
+
+Parameters:
+  LatestAmiId:
+    Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
+    Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
+  InstanceType:
+    Description: Amazon EC2 instance type for the instances
+    Type: String
+  SSHKeyName:
+    Type: String
+  LocalIP:
+    Description: Developer Public IPv4 Address to be allowed in Security Group
+    Type: String
+  VPC2StackName:
+    Type: String
+  PersistencyStack:
+    Type: String
+  ContainerImage:
+    Type: String
+    Default: alpine
+
+Conditions:
+  HasSSHKeyName: !Not
+    - !Equals
+      - !Ref SSHKeyName
+      - false
+Resources:
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+        GroupDescription: Allow http to client host
+        VpcId: !ImportValue
+          'Fn::Sub': "${VPC2StackName}-VPCID"
+        SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Sub "${LocalIP}/32"
+
+  InstanceRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  ServerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+
+  ServerLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !Ref LatestAmiId
+      SecurityGroups:
+        - !Ref InstanceSecurityGroup
+      IamInstanceProfile: !Ref ServerInstanceProfile
+      KeyName: !If [HasSSHKeyName, !Ref SSHKeyName, !Ref AWS::NoValue]
+      InstanceType: !Ref "InstanceType"
+      UserData: !Base64 |
+        #!/bin/bash
+        yum install -y python3 python3-pip awscli
+        echo 'alias python="/bin/python3"
+        alias pip="/bin/pip3"' >> ~/.bashrc
+        pip3 install boto3
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 8
+            VolumeType: "gp3"
+  ServerASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MinSize: '3'
+      MaxSize: '3'
+      DesiredCapacity: '3'
+      LaunchConfigurationName: !Ref ServerLaunchConfig
+      VPCZoneIdentifier:
+        - !ImportValue
+            'Fn::Sub': "${VPC2StackName}-PublicSubnet1ID"
+        - !ImportValue
+            'Fn::Sub': "${VPC2StackName}-PublicSubnet2ID"
+        - !ImportValue
+            'Fn::Sub': "${VPC2StackName}-PublicSubnet3ID"
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+
+  TaskRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          -
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "ecs-tasks.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "ecr:GetAuthorizationToken"
+                  - "ecr:BatchCheckLayerAvailability"
+                  - "ecr:GetDownloadUrlForLayer"
+                  - "ecr:BatchGetImage"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: '*'
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities:
+        - "FARGATE"
+      ExecutionRoleArn: !GetAtt TaskRole.Arn
+      Cpu: 256
+      Memory: 512
+      NetworkMode: "awsvpc"
+      ContainerDefinitions:
+        - Name: "HelloWorld"
+          Image: !Ref ContainerImage
+          MemoryReservation: 256
+          Memory: 512
+          PortMappings:
+            - ContainerPort: 80
+              Protocol: tcp
+
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBHttpListener
+    Properties:
+      Cluster: !Ref ECSCluster
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 3
+      HealthCheckGracePeriodSeconds: 60
+      LoadBalancers:
+        - TargetGroupArn: !Ref FargateTargetGroup
+          ContainerPort: 80
+          ContainerName: HelloWorld
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups:
+            - !GetAtt ALBFargateSG.GroupId
+          Subnets:
+            - !ImportValue
+              'Fn::Sub': "${VPC2StackName}-PrivateSubnet1ID"
+            - !ImportValue
+                'Fn::Sub': "${VPC2StackName}-PrivateSubnet2ID"
+            - !ImportValue
+              'Fn::Sub': "${VPC2StackName}-PrivateSubnet3ID"
+      LaunchType: FARGATE
+      TaskDefinition: !Ref TaskDefinition
+      ServiceName: MB-IO-CodeChallenge
+  FargateALB:
+    Type: 'AWS::ElasticLoadBalancingV2::LoadBalancer'
+    Properties:
+      Subnets:
+        - !ImportValue
+            'Fn::Sub': "${VPC2StackName}-PublicSubnet1ID"
+        - !ImportValue
+            'Fn::Sub': "${VPC2StackName}-PublicSubnet2ID"
+        - !ImportValue
+            'Fn::Sub': "${VPC2StackName}-PublicSubnet3ID"
+      Type: application
+      SecurityGroups:
+        - !GetAtt ALBSG.GroupId
+
+  FargateTargetGroup:
+    Type: 'AWS::ElasticLoadBalancingV2::TargetGroup'
+    Properties:
+      VpcId: !ImportValue
+        'Fn::Sub': "${VPC2StackName}-VPCID"
+      Protocol: HTTP
+      Port: 80
+      TargetType: ip
+  ALBFargateSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: SG for traffic between ALB and containers
+      VpcId: !ImportValue
+        'Fn::Sub': "${VPC2StackName}-VPCID"
+      SecurityGroupIngress:
+        - IpProtocol: 80
+          SourceSecurityGroupId: !GetAtt ALBSG.GroupId
+          Description: 'Inbound rule for all traffic'
+  ALBSG:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: SG for the Fargate ALB
+      VpcId: !ImportValue
+        'Fn::Sub': "${VPC2StackName}-VPCID"
+      SecurityGroupIngress:
+        - CidrIp: !ImportValue
+            'Fn::Sub': "${VPC2StackName}-VPCCIDR"
+          FromPort: 80
+          ToPort: 80
+          IpProtocol: TCP
+          Description: 'Inbound rule for IPv4 traffic'
+  ALBHttpListener:
+    Type: 'AWS::ElasticLoadBalancingV2::Listener'
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref FargateTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref FargateALB
+      Port: 80
+      Protocol: HTTP
+
+  Ec2RDSIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: !ImportValue
+        'Fn::Sub': "${PersistencyStack}-RDSPort"
+      ToPort: !ImportValue
+        'Fn::Sub': "${PersistencyStack}-RDSPort"
+      SourceSecurityGroupId: !GetAtt InstanceSecurityGroup.GroupId
+      GroupId: !ImportValue
+        'Fn::Sub': "${PersistencyStack}-RDSSG"
+  FargateRDSIngressRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: !ImportValue
+        'Fn::Sub': "${PersistencyStack}-RDSPort"
+      ToPort: !ImportValue
+        'Fn::Sub': "${PersistencyStack}-RDSPort"
+      SourceSecurityGroupId: !GetAtt ALBFargateSG.GroupId
+      GroupId: !ImportValue
+        'Fn::Sub': "${PersistencyStack}-RDSSG"
+Outputs:
+  Cluster:
+    Value: !Ref ECSCluster
