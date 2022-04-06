@@ -1,0 +1,186 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Deploys persistence 
+
+Parameters:
+  DomainName:
+    Type: String
+  NetworkStack:
+    Type: String
+  PostgresVersion:
+    Type: String
+    Default: 13.4
+  DbInstanceSize:
+    Type: String
+    Default: db.t3.micro
+  DBAllocatedStorage:
+    Type: String
+    Default: 20
+
+Mappings:
+  RegionMap:
+    us-east-1:
+      HostedZoneID: Z3AQBSTGFYJSTF
+      Endpoint: "s3-website-us-east-1.amazonaws.com"
+    us-west-1:
+      HostedZoneID: Z2F56UZL2M1ACD
+      Endpoint: "s3-website-us-west-1.amazonaws.com"
+    eu-west-1:
+      HostedZoneID: Z1BKCTXD74EZPE
+      Endpoint: "s3-website-eu-west-1.amazonaws.com"
+    eu-central-1:
+      HostedZoneID: Z21DNDUVLTQW6Q
+      Endpoint: "s3-website.eu-central-1.amazonaws.com"
+    eu-west-2:
+      HostedZoneID: Z3GKZC51ZF0DB4
+      Endpoint: "s3-website.eu-west-2.amazonaws.com"
+    eu-west-3:
+      HostedZoneID: Z3R1K369G5AVDG
+      Endpoint: "s3-website.eu-west-3.amazonaws.com"
+    eu-south-1:
+      HostedZoneID: Z30OZKI7KPW7MI
+      Endpoint: "s3-website.eu-south-1.amazonaws.com"
+
+
+Resources:
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    DeletionPolicy: Delete # Should not be used in Production
+    Properties:
+      BucketName: !Ref DomainName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3Bucket
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - 's3:GetObject'
+            Effect: Deny
+            Resource: !Sub 'arn:aws:s3:::${S3Bucket}/*'
+            Principal: '*'
+            Condition:
+              StringNotEquals:
+                aws:SourceVpc:
+                  - !ImportValue
+                    'Fn::Sub': "${NetworkStack}-VPC1ID"
+                  - !ImportValue
+                    'Fn::Sub': "${NetworkStack}-VPC2ID"
+          - Action:
+              - 's3:GetObject'
+            Effect: Allow
+            Resource: !Sub 'arn:aws:s3:::${S3Bucket}/*'
+            Principal: '*'
+            Condition:
+              StringEquals:
+                aws:SourceVpc:
+                  - !ImportValue
+                    'Fn::Sub': "${NetworkStack}-VPC1ID"
+                  - !ImportValue
+                    'Fn::Sub': "${NetworkStack}-VPC2ID"
+
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      AliasTarget:
+        DNSName: !FindInMap [RegionMap, !Ref "AWS::Region", Endpoint] # !Sub s3-website.${AWS::Region}.amazonaws.com
+        HostedZoneId:  !FindInMap [RegionMap, !Ref "AWS::Region", HostedZoneID]
+      HostedZoneId : !ImportValue
+        'Fn::Sub': "${NetworkStack}-HostedZoneId"
+      Name: !Ref DomainName
+      Type: A
+
+  RDSPCredentialsSecret:
+    Type: 'AWS::SecretsManager::Secret'
+    Properties:
+      Name: Secret
+      Description: "This secret has a dynamically generated secret password."
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "postgres"}'
+        GenerateStringKey: "password"
+        PasswordLength: 30
+        ExcludeCharacters: '"@/\'
+  RDSSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: SG for DB traffic
+      VpcId: !ImportValue
+        'Fn::Sub': "${NetworkStack}-VPC2ID"
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet Group for Code Challenge RDS
+      SubnetIds:
+        - !ImportValue
+          'Fn::Sub': "${NetworkStack}-VPC2PrivateSubnet1ID"
+        - !ImportValue
+          'Fn::Sub': "${NetworkStack}-VPC2PrivateSubnet2ID"
+        - !ImportValue
+          'Fn::Sub': "${NetworkStack}-VPC2PrivateSubnet3ID"
+
+  RDS:
+    Type: 'AWS::RDS::DBInstance'
+    DeletionPolicy: Delete # Should not be used in Production
+    Properties:
+      DBInstanceIdentifier: CodeChallengeDB
+      DBName: CodeChallengeDB
+      DBInstanceClass: !Ref DbInstanceSize
+      AllocatedStorage: !Ref DBAllocatedStorage
+      Engine: postgres
+      MultiAZ: true
+      EngineVersion: !Ref PostgresVersion
+      MasterUsername: !Join ['', ['{{resolve:secretsmanager:', !Ref RDSPCredentialsSecret, ':SecretString:username}}' ]]
+      MasterUserPassword: !Join ['', ['{{resolve:secretsmanager:', !Ref RDSPCredentialsSecret, ':SecretString:password}}' ]]
+      StorageEncrypted: true
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      BackupRetentionPeriod: 5
+      VPCSecurityGroups:
+        - !GetAtt RDSSecurityGroup.GroupId
+
+  ECR:
+    Type: AWS::ECR::Repository
+    Properties:
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+Outputs:
+  BucketName:
+    Value: !Ref S3Bucket
+  BucketRegionDomainName:
+    Value: !GetAtt S3Bucket.RegionalDomainName
+  RDSAddress:
+    Value: !GetAtt RDS.Endpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-RDSAddress"
+  RDSPort:
+    Value: !GetAtt RDS.Endpoint.Port
+    Export:
+      Name: !Sub "${AWS::StackName}-RDSPort"
+  RDSSecurityGroup:
+    Value: !GetAtt RDSSecurityGroup.GroupId
+    Export:
+      Name: !Sub "${AWS::StackName}-RDSSG"
+  ECRName:
+    Value: !Ref ECR
+    Export:
+      Name: !Sub "${AWS::StackName}-ECRName"
+  ECRUrl:
+    Value: !GetAtt ECR.RepositoryUri
+    Export:
+      Name: !Sub "${AWS::StackName}-ECRUrl"
