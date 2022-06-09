@@ -14,9 +14,8 @@ jobs:
 
       - name: Fetch latest release version
         id: fetch-latest-release
-        uses: reloc8/action-choose-release-version@1.0.0
+        uses: dawidd6/action-get-tag@v1
         with:
-           source-branch: 'main'
            excludes: prerelease, draft
 
       - name: Test
