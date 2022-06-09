@@ -8,11 +8,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-      - name: Fetch latest release version
-        id: fetch-latest-release
+      - name: Get tag
+        id: tag
         uses: dawidd6/action-get-tag@v1
-        with:
-           excludes: prerelease, draft
+
+      - name: Set job outputs
+        id: set-outputs
+        shell: bash
+        run: |
+          echo "::set-output name=targetTag::$(echo ${{ steps.tag.outputs.tag }})"
+          echo "::set-output name=targetCommit::$(echo ${{ github.sha }})"
 
       - name: Test
         run: echo ${{ steps.fetch-latest-release.outputs.latest-release }}
