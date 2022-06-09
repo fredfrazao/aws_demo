@@ -2,22 +2,22 @@ name: Fetch latest release version test
 
 on:
   workflow_dispatch:
-  release:
-    types: [published]
+
     
 jobs:
   job-name:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout 
-        uses: actions/checkout@v2
-
-      - name: Event context
-        env:
-          EVENT: ${{ toJSON(github.event) }}
+      - id: fetch-latest-release
+        uses: thebritican/fetch-latest-release@v1
+        with:
+          github_token: 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
+          prerelease: false
+      - name: "Print result"
         run: |
-          echo "$EVENT"
+          echo "release: ${{ steps.fetch-latest-release }}"
           
+
           
           
          
