@@ -1,4 +1,4 @@
-name: Makefile CI
+name: Fetch latest release version test
 
 on:
   workflow_dispatch:
