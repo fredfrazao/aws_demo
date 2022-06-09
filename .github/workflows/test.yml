@@ -4,15 +4,23 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: aws_demo
+  job-name:
     runs-on: ubuntu-latest
     steps:
-      - id: aws_demo
-        uses: pozetroninc/github-action-get-latest-release@master
+
+      - uses: actions/checkout@v2
+
+      - name: Fetch latest release version
+        id: fetch-latest-release
+        uses: reloc8/action-latest-release-version@1.0.0
         with:
-          owner: fredfrazao
-          repo: aws_demo
-          excludes: prerelease, draft
+           excludes: prerelease, draft
+
+      - name: Test
+        run: echo ${{ steps.fetch-latest-release.outputs.latest-release }}
+          
+          
+          
+         
 
 
