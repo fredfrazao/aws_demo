@@ -1,6 +1,6 @@
 
 
-## Creating a SSH Key Pair
+## Creating a SSH Key Pair 
 
 In order to have an SSH session with the servers from task 2 without using Session Manager, it is necessary to have a key pair in the region and pass its name to the `deploy.sh` script. If you don't have a key configured, use the script `create_ssh_key.sh` to generate one.
 
