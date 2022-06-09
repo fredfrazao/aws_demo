@@ -15,7 +15,7 @@ jobs:
       with:
         myToken: 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
         view_top: 1
-        exclude_types: "prerelease"
+        #exclude_types: "prerelease"
     - name: "Print result"
       run: |
         echo "id: ${{ steps.last_release.outputs.id }}"
