@@ -5,17 +5,14 @@ on:
 
 jobs:
   build:
-    name: Build
+    name: aws_demo
     runs-on: ubuntu-latest
     steps:
-    
-    - name: Get latest release of NodeJS
-      uses: rez0n/actions-github-release@main
-      id: node_release
-      env:
-        myToken: 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
-        repository: "fredfrazao/aws_demo"
-        type: "stable"
-  
-    - name: Test
-      run: echo ${{ steps.node_release.outputs.release }}
+      - id: aws_demo
+        uses: pozetroninc/github-action-get-latest-release@master
+        with:
+          owner: fredfrazao
+          repo: aws_demo
+          excludes: prerelease, draft
+
+
