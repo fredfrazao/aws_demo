@@ -13,6 +13,7 @@ jobs:
       uses: rez0n/actions-github-release@main
       id: node_release
       env:
+        myToken: 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
         repository: "fredfrazao/aws_demo"
         type: "stable"
   
