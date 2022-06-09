@@ -14,8 +14,8 @@ jobs:
       uses: InsonusK/get-latest-release@v1.0.1
       with:
         myToken: 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
-        view_top: 1
-        exclude_types: draft|prerelease
+        view_top: 100
+        exclude_types: prerelease
     - name: "Print result"
       run: |
         echo "id: ${{ steps.last_release.outputs.id }}"
