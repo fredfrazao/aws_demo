@@ -24,7 +24,10 @@ jobs:
         echo "created_at: ${{ steps.last_release.outputs.created_atd }}"
         echo "draft: ${{ steps.last_release.outputs.draft }}"
         echo "prerelease: ${{ steps.last_release.outputs.prerelease }}"
-          
+        
+    - uses: actions/checkout@v1
+      with:
+       ref: refs/tags/${{ steps.last_release.outputs.tag_name }}"
 
           
           
