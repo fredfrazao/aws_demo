@@ -15,7 +15,7 @@ jobs:
 
       - name: Fetch latest release version
         id: fetch-latest-release
-        run: git describe --tags
+        run: echo  ${{ github.event.release.name }}
 
 
       - name: Test
