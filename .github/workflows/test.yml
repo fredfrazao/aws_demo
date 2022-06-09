@@ -11,14 +11,13 @@ jobs:
         uses: actions/checkout@v2
         
 
-      - name: Set job outputs
-        id: set-outputs
-        shell: bash
+      - name: Checkout latest release tag
         run: |
-          echo "::set-output name=targetCommit::$(echo ${{ github.sha }})"
+          LATEST_TAG=$(git describe --tags `git rev-list --tags --max-count=1`)
+          git checkout $LATEST_TAG
 
       - name: Test
-        run: echo ${{ steps.set-outputs }}
+        run: echo $LATEST_TAG
           
           
           
